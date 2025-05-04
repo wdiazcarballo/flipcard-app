@@ -1,70 +1,209 @@
-# Getting Started with Create React App
+# Flipcard แอปพลิเคชัน - Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+ส่วน Frontend ของแอปพลิเคชัน Flipcard พัฒนาด้วย React.js สำหรับการเรียนรู้และทบทวนความรู้ด้วยบัตรคำศัพท์ดิจิทัล
 
-## Available Scripts
+## ภาพรวม
 
-In the project directory, you can run:
+ส่วน Frontend นี้รับผิดชอบในการแสดงส่วนติดต่อผู้ใช้ (UI) และการโต้ตอบกับผู้ใช้ ประกอบด้วยส่วนต่างๆ ดังนี้:
 
-### `npm start`
+- **การยืนยันตัวตน**: หน้าลงทะเบียนและเข้าสู่ระบบ
+- **แดชบอร์ดผู้ใช้**: แสดงข้อมูลสรุปและหมวดหมู่บัตรคำของผู้ใช้
+- **การจัดการหมวดหมู่**: สร้าง แก้ไข และลบหมวดหมู่บัตรคำ
+- **การจัดการบัตรคำ**: สร้าง แก้ไข และลบบัตรคำในแต่ละหมวดหมู่
+- **การเล่นเกมบัตรคำ**: พลิกบัตรคำและทดสอบความรู้
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## โครงสร้างโปรเจค
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+```
+frontend/
+├── public/                  # ไฟล์สาธารณะ
+│   ├── index.html           # ไฟล์ HTML หลัก
+│   └── ...
+├── src/                     # โค้ดต้นฉบับ
+│   ├── api/                 # การเชื่อมต่อกับ API
+│   │   └── axios.js
+│   ├── components/          # คอมโพเนนต์ React
+│   │   ├── auth/            # คอมโพเนนต์เกี่ยวกับการยืนยันตัวตน
+│   │   ├── common/          # คอมโพเนนต์ทั่วไป
+│   │   ├── creator/         # คอมโพเนนต์สำหรับผู้สร้าง
+│   │   └── player/          # คอมโพเนนต์สำหรับผู้เล่น
+│   ├── context/             # Context API
+│   │   ├── AuthContext.js   # การจัดการสถานะการยืนยันตัวตน
+│   │   └── CardContext.js   # การจัดการสถานะบัตรคำและหมวดหมู่
+│   ├── pages/               # หน้าแอปพลิเคชัน
+│   ├── styles/              # ไฟล์ CSS
+│   ├── App.js               # คอมโพเนนต์หลัก
+│   └── index.js             # จุดเริ่มต้นแอปพลิเคชัน
+└── package.json             # การกำหนดค่าโปรเจค npm
+```
 
-### `npm test`
+## แผนผังการเชื่อมต่อและเส้นทาง (Routes Diagram)
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+แผนผังต่อไปนี้แสดงถึงการเชื่อมต่อระหว่างคอมโพเนนต์ต่างๆ และการทำงานของเส้นทาง (routes) ในแอปพลิเคชัน:
 
-### `npm run build`
+```
+                                    +-------------------+
+                                    |                   |
+                                    |     index.js      |
+                                    |                   |
+                                    +--------+----------+
+                                             |
+                                             | (renders)
+                                             v
++---------------+                   +--------+----------+                  +----------------+
+|               |                   |                   |                  |                |
+|  AuthContext  <------------------>+      App.js      +------------------>+  CardContext  |
+|               |  (provides auth)  |                   | (provides cards) |                |
++-------+-------+                   +--------+----------+                  +--------+-------+
+        ^                                    |                                     ^
+        |                                    | (configures routes)                 |
+        |                                    v                                     |
+        |                            +-------+-------+                             |
+        |                            |               |                             |
+        |                            | React Router  |                             |
+        |                            |               |                             |
+        |                            +----+---+---+--+                             |
+        |                                 |   |   |                                |
+        |                                 |   |   |                                |
+   +----+----+                 +----------+   |   +------------+           +------+------+
+   |         |                 |              |                |           |             |
++--+ Login   |       +---------+----+   +-----+------+   +-----+------+   | Player      |
+|  | Register|       |              |   |            |   |            |   | Dashboard   |
+|  +---------+       | Home Page    |   | Creator    |   | FlipCard   |   +-------------+
+|                    |              |   | Dashboard  |   | Game       |           |
+|                    +--------------+   +-----+------+   +------------+           |
+|                                             |                                    |
++-------------------------------------------+ | +-----------------------------------+
+                                            | | |
+                       +-------------------++ | ++------------------+
+                       |                    | | |                   |
+                 +-----+------+      +------+-+-+------+     +-----+-----------+
+                 |            |      |                 |     |                 |
+                 | CategoryForm|      | CategoryList    |     | CardList         |
+                 |            |      |                 |     |                 |
+                 +------------+      +-----------------+     +---------+-------+
+                                                                       |
+                                              +-----------------------+---------------+
+                                              |                       |               |
+                                      +-------+-------+      +--------+------+   +----+----------+
+                                      |               |      |               |   |               |
+                                      | CardForm      |      | CardPreview   |   | Other         |
+                                      |               |      |               |   | Components    |
+                                      +---------------+      +---------------+   +---------------+
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+แผนผังนี้แสดงโครงสร้างและความสัมพันธ์ต่างๆ:
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- **index.js** เป็นจุดเริ่มต้นที่เรนเดอร์ **App.js**
+- **App.js** กำหนดค่า **React Router** และรวม Context Providers
+- **AuthContext** และ **CardContext** จัดการสถานะที่แชร์ทั่วทั้งแอปพลิเคชัน
+- **React Router** จัดการเส้นทางไปยังหน้าต่างๆ เช่น หน้าหลัก แดชบอร์ด และหน้าเกม
+- คอมโพเนนต์ย่อยต่างๆ เชื่อมต่อกับ Context เพื่อเข้าถึงและอัปเดตข้อมูล
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### การไหลของข้อมูล (Data Flow)
 
-### `npm run eject`
+1. **ผู้ใช้ → React Components**: ผู้ใช้โต้ตอบกับคอมโพเนนต์ UI
+2. **Components → Context API**: คอมโพเนนต์เรียกใช้ฟังก์ชันใน Context เพื่ออัปเดตข้อมูล
+3. **Context API → API Calls**: Context ทำการเรียก API ผ่าน axios
+4. **API Calls → Backend**: คำขอถูกส่งไปยัง Backend API
+5. **Backend → Frontend**: ข้อมูลถูกส่งกลับและอัปเดตใน Context
+6. **Context → Components**: คอมโพเนนต์ที่เกี่ยวข้องจะเรนเดอร์ใหม่พร้อมข้อมูลที่อัปเดต
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## การติดตั้ง
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+1. ต้องมี Node.js และ npm ติดตั้งในเครื่อง
+2. ติดตั้ง dependencies:
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+```bash
+npm install
+```
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## การรันแอปพลิเคชัน
 
-## Learn More
+### โหมดพัฒนา
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+```bash
+npm start
+```
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+เปิดเบราว์เซอร์และเข้าที่ [http://localhost:3000](http://localhost:3000)
 
-### Code Splitting
+### การสร้าง Production Build
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+npm run build
+```
 
-### Analyzing the Bundle Size
+ไฟล์ build จะถูกสร้างในโฟลเดอร์ `build/`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## การทดสอบ
 
-### Making a Progressive Web App
+### การรันชุดทดสอบ
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```bash
+npm test
+```
 
-### Advanced Configuration
+### การทดสอบแบบ End-to-End
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```bash
+npm run cypress:open
+```
 
-### Deployment
+## เทคโนโลยีที่ใช้
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+- **React.js**: ไลบรารี JavaScript สำหรับสร้าง UI
+- **React Router**: การจัดการเส้นทางในแอปพลิเคชัน
+- **Axios**: ไลบรารีสำหรับการเรียกใช้ HTTP API
+- **Context API**: การจัดการสถานะแอปพลิเคชัน
 
-### `npm run build` fails to minify
+## การเชื่อมต่อกับ Backend
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+แอปพลิเคชันนี้เชื่อมต่อกับ API ของ Backend ที่พัฒนาด้วย Node.js และ Express.js ซึ่งโดยค่าเริ่มต้นจะทำงานบน `http://localhost:5000`.
+
+การตั้งค่าการเชื่อมต่อสามารถปรับเปลี่ยนได้ในไฟล์ `/src/api/axios.js`
+
+## การ Dockerize
+
+เราสามารถสร้างคอนเทนเนอร์ Docker สำหรับ Frontend ได้ด้วยคำสั่งต่อไปนี้:
+
+```bash
+# สร้าง Docker image
+docker build -t flipcard-frontend .
+
+# รันคอนเทนเนอร์
+docker run -p 80:80 flipcard-frontend
+```
+
+## การนำขึ้นใช้งาน
+
+Frontend สามารถนำขึ้นใช้งานได้บนบริการ hosting ต่างๆ เช่น:
+
+- AWS Amplify
+- Netlify
+- Vercel
+- GitHub Pages
+
+## การแก้ไขปัญหาเบื้องต้น
+
+### ไม่สามารถเชื่อมต่อกับ Backend API ได้
+
+- ตรวจสอบว่า Backend API ทำงานอยู่
+- ตรวจสอบ URL ที่กำหนดใน `/src/api/axios.js`
+- ตรวจสอบว่าไม่มีปัญหาเกี่ยวกับ CORS
+
+### การล็อกอินไม่ทำงาน
+
+- ตรวจสอบว่า localStorage สามารถเข้าถึงได้ในเบราว์เซอร์
+- ตรวจสอบว่า JWT ถูกจัดเก็บและส่งไปกับคำขอ API อย่างถูกต้อง
+
+## สำหรับนักศึกษา DTI 201
+
+นี่เป็นโปรเจคสำหรับการเรียนรู้การพัฒนา Frontend ด้วย React.js โดยเน้นที่:
+
+- การใช้ Component-based Architecture
+- การจัดการสถานะด้วย Context API
+- การเชื่อมต่อกับ RESTful API
+- การสร้างส่วนติดต่อผู้ใช้ที่ตอบสนองและใช้งานง่าย
+
+สำหรับข้อมูลเพิ่มเติม อธิบายใน README ไฟล์ที่โฟลเดอร์หลักของโปรเจค
