@@ -18,7 +18,27 @@ const app = express();
 
 // Middleware
 app.use(express.json());
-app.use(cors());
+
+// ตั้งค่า CORS ให้เหมาะสม
+const corsOptions = {
+  origin: function (origin, callback) {
+    // ตรวจสอบว่ามีการกำหนด CORS_ORIGINS ในตัวแปรสภาพแวดล้อมหรือไม่
+    const allowedOrigins = process.env.CORS_ORIGINS 
+      ? process.env.CORS_ORIGINS.split(',') 
+      : ['http://localhost:3000']; // ค่าเริ่มต้นสำหรับการพัฒนา
+    
+    // อนุญาตให้ไม่มี origin (เช่น คำขอจาก Postman หรือเครื่องมือทดสอบ)
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  optionsSuccessStatus: 200
+};
+
+app.use(cors(corsOptions));
 app.use(helmet());
 app.use('/api', apiLimiter);
 
@@ -57,7 +77,8 @@ app.use(errorHandler);
 const PORT = process.env.PORT || 5000;
 
 // เริ่มเซิร์ฟเวอร์
-app.listen(PORT, () => {
+// ใช้ '0.0.0.0' เพื่อรับการเชื่อมต่อจากทุกอินเทอร์เฟส (สำคัญสำหรับ EC2)
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`เซิร์ฟเวอร์กำลังทำงานที่พอร์ต ${PORT} ในโหมด ${process.env.NODE_ENV}`);
 });
 

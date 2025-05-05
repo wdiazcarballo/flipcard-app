@@ -441,35 +441,44 @@ flipcard-app/
 - การทดสอบอัตโนมัติ
 - การวิเคราะห์คุณภาพโค้ด
 
-**ขั้นตอนการทำ:**
+#### 3.1 การทดสอบ Backend
 
-1. **การทดสอบ Backend**
+Backend ใช้ Jest และ Supertest สำหรับการทดสอบ API และฟังก์ชันการทำงาน
 
-   - **ติดตั้งเครื่องมือทดสอบ**
-   ```
+1. **การติดตั้งและการตั้งค่า**
+
+   ```bash
    cd backend
    npm install --save-dev jest supertest
    ```
 
-   - **เพิ่มสคริปท์ทดสอบใน package.json**
+   เพิ่มคำสั่งทดสอบใน `package.json`:
    ```json
    "scripts": {
-     "test": "jest --detectOpenHandles"
+     "test": "jest --detectOpenHandles --forceExit",
+     "test:watch": "jest --watch",
+     "test:coverage": "jest --coverage"
    }
    ```
 
-   - **สร้างไฟล์ทดสอบ API** (tests/auth.test.js)
+2. **การเขียนการทดสอบ API**
+
+   สร้างไฟล์ `tests/auth.test.js`:
    ```javascript
    const request = require('supertest');
    const app = require('../server');
    
+   // ต้องแน่ใจว่าเซิร์ฟเวอร์ไม่ได้กำลังทำงานระหว่างการทดสอบ
+   
    describe('การทดสอบ Auth API', () => {
+     // ทดสอบ endpoint สำหรับการตรวจสอบสถานะ
      it('ควรแสดงข้อความต้อนรับจาก API', async () => {
        const res = await request(app).get('/');
        expect(res.statusCode).toEqual(200);
        expect(res.body).toHaveProperty('message');
      });
      
+     // ทดสอบการเข้าสู่ระบบด้วยข้อมูลไม่ถูกต้อง
      it('ควรไม่สามารถเข้าสู่ระบบได้ด้วยข้อมูลไม่ถูกต้อง', async () => {
        const res = await request(app).post('/api/users/login').send({
          email: 'test@example.com',
@@ -478,87 +487,330 @@ flipcard-app/
        expect(res.statusCode).toEqual(401);
      });
      
-     // เพิ่มการทดสอบอื่นๆ...
+     // เพิ่มการทดสอบอื่นๆ ตามต้องการ...
    });
    ```
 
-   - **รันการทดสอบ**
-   ```
-   npm test
+3. **การทดสอบ Controllers**
+
+   สร้างไฟล์ `tests/controllers/userController.test.js`:
+   ```javascript
+   const { registerUser, loginUser } = require('../../controllers/userController');
+   const User = require('../../models/User');
+   
+   // Mock โมเดล User
+   jest.mock('../../models/User');
+   
+   describe('User Controller', () => {
+     let req, res;
+     
+     beforeEach(() => {
+       // สร้าง mock request และ response
+       req = {
+         body: {},
+       };
+       res = {
+         status: jest.fn().mockReturnThis(),
+         json: jest.fn(),
+       };
+     });
+     
+     it('registerUser ควรสร้างผู้ใช้ใหม่และส่งกลับ token', async () => {
+       // จำลองข้อมูลผู้ใช้
+       req.body = {
+         name: 'Test User',
+         email: 'test@example.com',
+         password: 'password123'
+       };
+       
+       // จำลองการเรียกใช้ User.findOne และ user.save
+       User.findOne.mockResolvedValue(null);
+       User.mockImplementation(() => ({
+         save: jest.fn().mockResolvedValue({
+           _id: 'mock-id',
+           name: 'Test User',
+           email: 'test@example.com',
+         }),
+       }));
+       
+       await registerUser(req, res);
+       
+       expect(res.status).toHaveBeenCalledWith(201);
+       expect(res.json).toHaveBeenCalledWith(
+         expect.objectContaining({
+           token: expect.any(String),
+         })
+       );
+     });
+     
+     // เพิ่มการทดสอบอื่นๆ ตามต้องการ...
+   });
    ```
 
-2. **การทดสอบ Frontend**
+4. **การรันการทดสอบ**
 
-   - **เพิ่มเครื่องมือทดสอบ React**
+   ```bash
+   npm test                # รันทุกการทดสอบ
+   npm test -- -t "auth"   # รันเฉพาะการทดสอบที่มีคำว่า "auth"
+   npm run test:coverage   # รันการทดสอบพร้อมรายงานความครอบคลุม
    ```
+
+#### 3.2 การทดสอบ Frontend
+
+Frontend ใช้ React Testing Library และ Jest สำหรับการทดสอบคอมโพเนนต์และการทำงาน
+
+1. **การติดตั้งและการตั้งค่า**
+
+   Create React App มาพร้อมกับ Jest และ React Testing Library แล้ว แต่อาจต้องติดตั้งเพิ่มเติม:
+   ```bash
    cd frontend
    npm install --save-dev @testing-library/react @testing-library/jest-dom @testing-library/user-event
    ```
 
-   - **สร้างไฟล์ทดสอบคอมโพเนนต์** (src/components/auth/Login.test.js)
+   อัปเดต `package.json`:
+   ```json
+   "scripts": {
+     "test": "react-scripts test --transformIgnorePatterns \"node_modules/(?!axios)/\"",
+     "test:ci": "react-scripts test --transformIgnorePatterns \"node_modules/(?!axios)/\" --watchAll=false --ci"
+   }
+   ```
+
+2. **การตั้งค่าสภาพแวดล้อมการทดสอบ**
+
+   โปรเจคนี้มีการจัดการการทดสอบด้วยไฟล์ต่างๆ:
+   
+   - `src/setupTests.js` สำหรับการตั้งค่าสภาพแวดล้อมการทดสอบ
+   - `src/mocks/` โฟลเดอร์สำหรับ mock modules ต่างๆ (เช่น react-router-dom, AuthContext)
+   - `jest.config.js` สำหรับการกำหนดค่า Jest
+
+   ```javascript
+   // src/setupTests.js
+   import '@testing-library/jest-dom';
+   
+   // Mock external modules
+   jest.mock('react-router-dom', () => require('../mocks/react-router-dom'));
+   
+   // Clear mocks between tests
+   afterEach(() => {
+     jest.clearAllMocks();
+   });
+   ```
+
+3. **การสร้าง Mock**
+
+   สร้าง mock สำหรับ components และ contexts:
+   
+   ```javascript
+   // src/mocks/react-router-dom.js
+   export const BrowserRouter = ({ children }) => children;
+   export const Routes = ({ children }) => children;
+   export const Route = ({ children }) => children;
+   export const Link = ({ children, to }) => <a href={to}>{children}</a>;
+   export const useNavigate = () => jest.fn();
+   export const useLocation = () => ({ pathname: '/' });
+   
+   // src/mocks/AuthContext.js
+   import React from 'react';
+   
+   export const mockAuthContext = {
+     login: jest.fn().mockResolvedValue(true),
+     register: jest.fn().mockResolvedValue(true),
+     logout: jest.fn(),
+     user: null,
+     error: null,
+   };
+   
+   export const AuthContext = React.createContext(mockAuthContext);
+   export const AuthProvider = ({ children }) => (
+     <AuthContext.Provider value={mockAuthContext}>{children}</AuthContext.Provider>
+   );
+   ```
+
+4. **การเขียนการทดสอบคอมโพเนนต์**
+
+   สร้างไฟล์ `src/components/auth/Login.test.js`:
    ```javascript
    import { render, screen, fireEvent } from '@testing-library/react';
    import Login from './Login';
    
-   test('แสดงฟอร์มล็อกอินถูกต้อง', () => {
-     render(<Login />);
-     expect(screen.getByLabelText(/อีเมล/i)).toBeInTheDocument();
-     expect(screen.getByLabelText(/รหัสผ่าน/i)).toBeInTheDocument();
-     expect(screen.getByRole('button', { name: /เข้าสู่ระบบ/i })).toBeInTheDocument();
-   });
+   // Mock dependencies
+   jest.mock('react-router-dom', () => require('../../mocks/react-router-dom'));
+   jest.mock('../../context/AuthContext', () => require('../../mocks/AuthContext'));
    
-   test('แสดงข้อความเมื่อกรอกข้อมูลไม่ครบ', () => {
-     render(<Login />);
-     
-     // คลิกปุ่มเข้าสู่ระบบโดยไม่กรอกข้อมูล
-     fireEvent.click(screen.getByRole('button', { name: /เข้าสู่ระบบ/i }));
-     
-     // ตรวจสอบว่ามีข้อความแจ้งเตือน
-     expect(screen.getByText(/กรุณากรอกอีเมล/i)).toBeInTheDocument();
-   });
-   ```
-
-   - **รันการทดสอบ**
-   ```
-   npm test
-   ```
-
-3. **การทดสอบ End-to-End**
-
-   - **ติดตั้ง Cypress**
-   ```
-   cd frontend
-   npm install --save-dev cypress
-   ```
-
-   - **เพิ่มสคริปท์รัน Cypress ใน package.json**
-   ```json
-   "scripts": {
-     "cypress:open": "cypress open",
-     "cypress:run": "cypress run"
-   }
-   ```
-
-   - **สร้างไฟล์ทดสอบ E2E** (cypress/integration/login.spec.js)
-   ```javascript
-   describe('การทดสอบหน้าล็อกอิน', () => {
-     it('ล็อกอินสำเร็จและนำไปยังหน้าแดชบอร์ด', () => {
-       cy.visit('/login');
-       cy.get('input[name=email]').type('test@example.com');
-       cy.get('input[name=password]').type('password123');
-       cy.get('button[type=submit]').click();
+   describe('Login Component', () => {
+     test('แสดงฟอร์มล็อกอินถูกต้อง', () => {
+       render(<Login />);
+       expect(screen.getByLabelText(/อีเมล/i)).toBeInTheDocument();
+       expect(screen.getByLabelText(/รหัสผ่าน/i)).toBeInTheDocument();
+       expect(screen.getByRole('button', { name: /เข้าสู่ระบบ/i })).toBeInTheDocument();
+     });
+   
+     test('แสดงข้อความเมื่อกรอกข้อมูลไม่ครบ', () => {
+       render(<Login />);
        
-       // ตรวจสอบว่านำทางไปยังหน้าแดชบอร์ด
-       cy.url().should('include', '/dashboard');
-       cy.contains('ยินดีต้อนรับ').should('be.visible');
+       // คลิกปุ่มเข้าสู่ระบบโดยไม่กรอกข้อมูล
+       fireEvent.click(screen.getByRole('button', { name: /เข้าสู่ระบบ/i }));
+       
+       // ตรวจสอบว่ามีข้อความแจ้งเตือน
+       expect(screen.getByText(/กรุณากรอกอีเมล/i)).toBeInTheDocument();
      });
    });
    ```
 
-   - **รันการทดสอบ E2E**
+5. **การทดสอบ App Component**
+
+   สร้างไฟล์ `src/App.test.js`:
+   ```javascript
+   import { render, screen } from '@testing-library/react';
+   import App from './App';
+   
+   // Mock dependencies
+   jest.mock('./context/AuthContext', () => require('./mocks/AuthContext'));
+   jest.mock('./context/CardContext', () => ({
+     CardContext: { Provider: ({ children }) => children },
+     CardProvider: ({ children }) => children,
+   }));
+   
+   jest.mock('./components/common/Layout', () => ({
+     __esModule: true,
+     default: ({ children }) => <div data-testid="layout">{children}</div>,
+   }));
+   
+   test('renders application layout', () => {
+     render(<App />);
+     expect(screen.getByTestId('layout')).toBeInTheDocument();
+   });
    ```
+
+6. **การรันการทดสอบ**
+
+   ```bash
+   npm test                # รันการทดสอบในโหมด watch
+   npm run test:ci         # รันการทดสอบครั้งเดียว (สำหรับ CI)
+   npm test -- --coverage  # รันการทดสอบพร้อมรายงานความครอบคลุม
+   ```
+
+#### 3.3 การทดสอบ End-to-End (E2E)
+
+การทดสอบ E2E ใช้ Cypress เพื่อทดสอบการทำงานของแอปพลิเคชันทั้งหมด
+
+1. **การติดตั้งและการตั้งค่า**
+
+   ```bash
+   cd frontend
+   npm install --save-dev cypress
+   ```
+
+   เพิ่มคำสั่งใน `package.json`:
+   ```json
+   "scripts": {
+     "cypress:open": "cypress open",
+     "cypress:run": "cypress run",
+     "test:e2e": "cypress run"
+   }
+   ```
+
+2. **การตั้งค่า Cypress**
+
+   เมื่อรัน Cypress ครั้งแรก จะสร้างโครงสร้างไฟล์:
+   ```bash
    npm run cypress:open
    ```
+
+   สร้างไฟล์ `cypress.json`:
+   ```json
+   {
+     "baseUrl": "http://localhost:3000",
+     "viewportWidth": 1280,
+     "viewportHeight": 720
+   }
+   ```
+
+3. **การเขียนการทดสอบ E2E**
+
+   สร้างไฟล์ `cypress/integration/auth.spec.js`:
+   ```javascript
+   describe('Authentication', () => {
+     beforeEach(() => {
+       // รีเซ็ต state ก่อนทำการทดสอบแต่ละครั้ง
+       cy.visit('/');
+     });
+   
+     it('ควรสามารถเข้าสู่หน้าล็อกอินได้', () => {
+       cy.visit('/login');
+       cy.get('h2').should('contain', 'เข้าสู่ระบบ');
+       cy.get('input[name="email"]').should('exist');
+       cy.get('input[name="password"]').should('exist');
+       cy.get('button[type="submit"]').should('exist');
+     });
+   
+     it('ควรแสดงข้อความข้อผิดพลาดเมื่อกรอกข้อมูลไม่ครบ', () => {
+       cy.visit('/login');
+       cy.get('button[type="submit"]').click();
+       cy.get('div').should('contain', 'กรุณาระบุอีเมล');
+     });
+   
+     it('ควรแสดงข้อความข้อผิดพลาดเมื่อล็อกอินด้วยข้อมูลไม่ถูกต้อง', () => {
+       cy.visit('/login');
+       cy.get('input[name="email"]').type('wrong@example.com');
+       cy.get('input[name="password"]').type('wrongpassword');
+       cy.get('button[type="submit"]').click();
+       
+       // รอข้อความข้อผิดพลาดจาก API
+       cy.get('div[role="alert"]', { timeout: 5000 }).should('be.visible');
+     });
+   });
+   ```
+
+4. **การรันการทดสอบ E2E**
+
+   ```bash
+   # ต้องรัน backend และ frontend ก่อน
+   cd backend && npm run dev
+   cd frontend && npm start
+   
+   # รันการทดสอบแบบ interactive
+   npm run cypress:open
+   
+   # รันการทดสอบแบบ headless
+   npm run cypress:run
+   ```
+
+#### 3.4 เคล็ดลับการทดสอบ
+
+1. **การทดสอบการทำงานร่วมกันของ Frontend และ Backend**
+   - ใช้ `supertest` สำหรับการทดสอบ API โดยตรง
+   - ใช้ Cypress สำหรับการทดสอบแบบ End-to-End
+
+2. **การใช้ Mock ที่เหมาะสม**
+   - Mock external services (เช่น Auth API) เพื่อป้องกันการเรียกใช้งานจริงระหว่างการทดสอบ
+   - Mock modules ที่ไม่เกี่ยวข้องกับสิ่งที่กำลังทดสอบ
+
+3. **การวิเคราะห์ความครอบคลุมของการทดสอบ**
+   - รันการทดสอบพร้อมรายงานความครอบคลุม
+   - ตั้งเป้าหมายความครอบคลุมสำหรับโค้ดสำคัญ (เช่น > 80%)
+
+4. **การตรวจสอบประสิทธิภาพ**
+   - ใช้เครื่องมือเช่น Lighthouse หรือ WebPageTest สำหรับวิเคราะห์ประสิทธิภาพ
+   - ตรวจสอบหน่วยความจำรั่วไหลด้วย Chrome DevTools
+
+5. **การวิเคราะห์คุณภาพโค้ด**
+   - ใช้ ESLint สำหรับตรวจสอบคุณภาพโค้ด
+   - ใช้ Prettier สำหรับการจัดรูปแบบโค้ดให้คงที่
+
+#### 3.5 การแก้ไขปัญหาการทดสอบที่พบบ่อย
+
+1. **ปัญหา "Cannot find module 'react-router-dom'"**
+   - สร้างไฟล์ mock สำหรับ react-router-dom
+   - ใช้ transformIgnorePatterns ใน Jest config เพื่อจัดการกับ ES modules
+
+2. **ปัญหา "Timeout waiting for element"**
+   - เพิ่มเวลา timeout ในการทดสอบ E2E
+   - ตรวจสอบเงื่อนไขการทดสอบและการเรียกใช้ API
+
+3. **ปัญหา "Error: Cross origin http://localhost forbidden"**
+   - ตั้งค่า CORS ในเซิร์ฟเวอร์ให้ถูกต้อง
+   - ใช้ proxy ใน Create React App development server
 
 ### 4. การสร้างคอนเทนเนอร์ด้วย Docker
 
@@ -908,106 +1160,381 @@ flipcard-app/
 
    - เลือก "EC2" จากรายการบริการ
    - คลิก "Launch Instance"
-   - เลือก Ubuntu Server 20.04 LTS
+   - เลือก Ubuntu Server 20.04 LTS 
    - เลือกประเภท t2.micro (ฟรีในปีแรก)
-   - ตั้งค่ากลุ่มความปลอดภัย (Security Group) ให้อนุญาตพอร์ต 22 (SSH), 80 (HTTP), 443 (HTTPS)
+   - ตั้งค่ากลุ่มความปลอดภัย (Security Group) ให้อนุญาตพอร์ตดังนี้:
+     - 22 (SSH): สำหรับการเข้าถึง SSH
+     - 80 (HTTP): สำหรับการเข้าถึงเว็บไซต์
+     - 443 (HTTPS): สำหรับการเข้าถึงเว็บไซต์แบบปลอดภัย
+     - 5000 (Express API): สำหรับการเข้าถึง API โดยตรง (หรือปิดไว้สำหรับการ proxy ผ่าน Nginx)
    - สร้างและดาวน์โหลดคีย์แพร์ (.pem file)
    - คลิก "Launch Instance"
 
-3. **เชื่อมต่อกับ EC2 (Windows)**
+3. **เชื่อมต่อกับ EC2**
 
-   - ใช้ Mobaxterm เพื่อเชื่อมต่อกับ EC2 หรือ ใช้ EC2 online console
+   **สำหรับ Windows**
+   - ใช้ Mobaxterm, PuTTY หรือ Windows Terminal เพื่อเชื่อมต่อกับ EC2
+   - หรือใช้ EC2 online console ใน AWS Management Console
 
-4. **เชื่อมต่อกับ EC2 (Mac/Linux)**
-
-   ```
+   **สำหรับ Mac/Linux**
+   ```bash
    chmod 400 your-key.pem
    ssh -i your-key.pem ubuntu@your-ec2-public-ip
    ```
 
-5. **ติดตั้งซอฟต์แวร์ที่จำเป็น**
+4. **ติดตั้งซอฟต์แวร์ที่จำเป็น**
 
-   ```
+   ```bash
+   # อัปเดตแพ็กเกจ
    sudo apt update && sudo apt upgrade -y
+   
+   # ติดตั้ง Git และ Nginx
    sudo apt install -y git nginx
 
-   # ติดตั้ง Node.js
+   # ติดตั้ง Node.js 16 (หรือเวอร์ชันที่ต้องการ)
    curl -fsSL https://deb.nodesource.com/setup_16.x | sudo -E bash -
    sudo apt install -y nodejs
 
-   # ติดตั้ง PM2
+   # ตรวจสอบการติดตั้ง
+   node --version  # ควรแสดง v16.x.x
+   npm --version   # ควรแสดง 8.x.x
+
+   # ติดตั้ง PM2 สำหรับจัดการกระบวนการ Node.js
    sudo npm install -g pm2
    ```
 
-6. **โคลนโปรเจค**
+5. **โคลนโปรเจค**
 
-   ```
+   ```bash
+   # ไปที่โฮมไดเร็กทอรี
+   cd ~
+   
+   # โคลนโปรเจค
    git clone https://github.com/wdiazcarballo/flipcard-app.git
    cd flipcard-app
    ```
 
-7. **ตั้งค่า Backend**
+6. **ตั้งค่าและรัน Backend**
 
-   ```
+   ```bash
+   # เข้าไปในโฟลเดอร์ backend
    cd backend
+   
+   # ติดตั้ง dependencies
    npm install
 
    # สร้างไฟล์ .env
-   nano .env
-   # เพิ่มตัวแปรสภาพแวดล้อมที่จำเป็น
+   cat > .env << EOF
+   PORT=5000
+   MONGO_URI=your_mongodb_connection_string
+   JWT_SECRET=your_secure_jwt_secret
+   NODE_ENV=production
+   CORS_ORIGINS=http://your-ec2-ip,http://your-domain.com
+   EOF
 
-   # เริ่มการทำงานด้วย PM2
+   # ทดสอบว่า backend ทำงานได้
+   node server.js
+   
+   # หากทำงานได้ถูกต้อง กด Ctrl+C เพื่อหยุดและรันด้วย PM2 แทน
    pm2 start server.js --name "flipcard-backend"
    pm2 save
    pm2 startup
    ```
 
-8. **สร้าง Production Build ของ Frontend**
+7. **ตั้งค่าและสร้าง Frontend**
 
-   ```
-   cd ../frontend
+   ```bash
+   # กลับไปที่โฟลเดอร์หลัก
+   cd ..
+   
+   # เข้าไปในโฟลเดอร์ frontend
+   cd frontend
+   
+   # ติดตั้ง dependencies
    npm install
+   
+   # สร้างไฟล์สำหรับตัวแปรสภาพแวดล้อม
+   cat > .env.production << EOF
+   REACT_APP_API_URL=http://your-ec2-ip
+   EOF
+   
+   # สร้าง production build
    npm run build
+   
+   # ตรวจสอบว่ามีโฟลเดอร์ build หรือไม่
+   ls -la build
    ```
 
-9. **ตั้งค่า Nginx**
+8. **ตั้งค่า Nginx**
 
-   ```
+   ```bash
+   # สร้าง Nginx configuration
    sudo nano /etc/nginx/sites-available/flipcard
    ```
 
-   เพิ่มข้อมูลต่อไปนี้:
+   เพิ่มข้อมูลต่อไปนี้ในไฟล์ (แทนที่ `your-ec2-ip` ด้วย IP จริงของ EC2):
 
-   ```
+   ```nginx
    server {
        listen 80;
-       server_name your_ec2_ip;
+       server_name your-ec2-ip; # แทนที่ด้วย IP หรือโดเมนจริง
 
+       # ส่วนของ Frontend
        location / {
            root /home/ubuntu/flipcard-app/frontend/build;
            index index.html;
            try_files $uri $uri/ /index.html;
        }
 
+       # ส่วนของ API
        location /api {
            proxy_pass http://localhost:5000;
            proxy_http_version 1.1;
            proxy_set_header Host $host;
            proxy_set_header X-Real-IP $remote_addr;
+           proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+           proxy_set_header X-Forwarded-Proto $scheme;
+           
+           # ตั้งค่า timeout ให้เหมาะสม
+           proxy_connect_timeout 300s;
+           proxy_send_timeout 300s;
+           proxy_read_timeout 300s;
        }
+
+       # เพิ่มการบีบอัดข้อมูล (GZIP) เพื่อเพิ่มประสิทธิภาพ
+       gzip on;
+       gzip_vary on;
+       gzip_min_length 10240;
+       gzip_proxied expired no-cache no-store private auth;
+       gzip_types text/plain text/css text/xml text/javascript application/javascript application/x-javascript application/xml;
+       gzip_disable "MSIE [1-6]\.";
    }
    ```
 
-10. **เปิดใช้งาน Nginx Config**
+9. **เปิดใช้งาน Nginx Config และตรวจสอบความถูกต้อง**
 
-    ```
-    sudo ln -s /etc/nginx/sites-available/flipcard /etc/nginx/sites-enabled/
-    sudo nginx -t
-    sudo systemctl restart nginx
+   ```bash
+   # เปิดใช้งาน configuration
+   sudo ln -s /etc/nginx/sites-available/flipcard /etc/nginx/sites-enabled/
+   
+   # ลบการตั้งค่าเริ่มต้น (ทางเลือก)
+   sudo rm /etc/nginx/sites-enabled/default
+   
+   # ตรวจสอบความถูกต้องของการตั้งค่า
+   sudo nginx -t
+   
+   # รีสตาร์ท Nginx
+   sudo systemctl restart nginx
+   ```
+
+10. **ตรวจสอบสถานะของบริการ**
+
+    ```bash
+    # ตรวจสอบสถานะของ PM2
+    pm2 status
+    
+    # ตรวจสอบ logs ของแอปพลิเคชัน
+    pm2 logs flipcard-backend
+    
+    # ตรวจสอบสถานะของ Nginx
+    sudo systemctl status nginx
     ```
 
-11. **เข้าชมเว็บไซต์**
-    - เปิดเบราว์เซอร์และเข้า http://your_ec2_ip
+11. **ทดสอบการเข้าถึงแอปพลิเคชัน**
+    - เปิดเบราว์เซอร์และเข้าไปที่ `http://your-ec2-ip`
+    - ทดสอบการลงทะเบียน เข้าสู่ระบบ และฟังก์ชันการทำงานอื่นๆ
+
+12. **การแก้ไขปัญหาเบื้องต้น**
+
+    **ถ้าเว็บไซต์ไม่แสดง:**
+    - ตรวจสอบว่า Nginx ทำงานอยู่: `sudo systemctl status nginx`
+    - ตรวจสอบ Nginx error logs: `sudo cat /var/log/nginx/error.log`
+    - ตรวจสอบว่า Security Group ใน AWS เปิดพอร์ต 80 และ 443
+    
+    **ถ้า API ไม่ทำงาน:**
+    - ตรวจสอบว่า backend ทำงานอยู่: `pm2 status`
+    - ตรวจสอบ PM2 logs: `pm2 logs flipcard-backend`
+    - ตรวจสอบการเชื่อมต่อกับ MongoDB
+    - ตรวจสอบ CORS settings ใน backend/server.js
+
+13. **การตั้งค่า HTTPS (ทางเลือก)**
+
+    หากคุณมีโดเมนและต้องการใช้งาน HTTPS:
+    
+    ```bash
+    # ติดตั้ง Certbot
+    sudo apt install -y certbot python3-certbot-nginx
+    
+    # ขอใบรับรองและตั้งค่า HTTPS อัตโนมัติ
+    sudo certbot --nginx -d yourdomain.com
+    
+    # ทำตามขั้นตอนที่ปรากฏบนหน้าจอ
+    ```
+
+14. **การใช้สคริปต์ติดตั้งอัตโนมัติ**
+
+    โปรเจคนี้มีสคริปต์ `setup-ec2.sh` ที่สามารถช่วยให้การติดตั้งทั้งหมดเป็นไปโดยอัตโนมัติ:
+    
+    ```bash
+    # อัปโหลดสคริปต์ไปยัง EC2 (จาก terminal เครื่องคุณ)
+    scp -i your-key.pem setup-ec2.sh ubuntu@your-ec2-ip:~/
+    
+    # เชื่อมต่อกับ EC2
+    ssh -i your-key.pem ubuntu@your-ec2-ip
+    
+    # ให้สิทธิ์ในการรันสคริปต์
+    chmod +x ~/setup-ec2.sh
+    
+    # รันสคริปต์
+    ./setup-ec2.sh
+    ```
+    
+    สคริปต์นี้จะทำการติดตั้งทุกอย่างให้อัตโนมัติ รวมถึง:
+    - ติดตั้งซอฟต์แวร์ที่จำเป็นทั้งหมด
+    - ตั้งค่า Backend และ Frontend
+    - ตั้งค่า Nginx
+    - ตั้งค่า PM2 สำหรับการรันแอปอัตโนมัติเมื่อรีบูต
+    
+15. **ตั้งค่าการสำรองข้อมูลอัตโนมัติ (ทางเลือก)**
+
+    ```bash
+    # สร้างสคริปท์สำรองข้อมูล MongoDB
+    mkdir -p ~/backups
+    
+    # สร้างสคริปท์
+    cat > ~/mongodb_backup.sh << 'EOF'
+    #!/bin/bash
+    DATE=$(date +%Y-%m-%d_%H-%M-%S)
+    BACKUP_DIR=~/backups
+    mongodump --uri="your_mongodb_uri" --out=$BACKUP_DIR/mongodb_$DATE
+    # คงไว้เฉพาะสำเนาย้อนหลัง 7 วัน
+    find $BACKUP_DIR -type d -name "mongodb_*" -mtime +7 -exec rm -rf {} \;
+    EOF
+    
+    # ให้สิทธิ์ในการรัน
+    chmod +x ~/mongodb_backup.sh
+    
+    # ตั้งค่า cron job เพื่อรันทุกวัน
+    (crontab -l 2>/dev/null; echo "0 0 * * * ~/mongodb_backup.sh") | crontab -
+    ```
+
+### ขั้นตอนการอัปเดตแอปพลิเคชัน
+
+1. **อัปเดต Backend**
+
+   ```bash
+   cd ~/flipcard-app
+   git pull
+   cd backend
+   npm install
+   pm2 restart flipcard-backend
+   ```
+
+2. **อัปเดต Frontend**
+
+   ```bash
+   cd ~/flipcard-app
+   git pull
+   cd frontend
+   npm install
+   npm run build
+   ```
+
+3. **รีโหลด Nginx (ถ้าจำเป็น)**
+
+   ```bash
+   sudo systemctl reload nginx
+   ```
+
+### การติดตามและการจัดการแอปพลิเคชัน
+
+1. **ติดตาม PM2 โดยละเอียด**
+
+   ```bash
+   # ติดตั้ง PM2 web dashboard (ทางเลือก)
+   pm2 install pm2-server-monit
+   
+   # เปิด PM2 dashboard
+   pm2 plus
+   ```
+
+2. **ดู Logs ของแอปพลิเคชัน**
+
+   ```bash
+   # ดู logs ของ backend
+   pm2 logs flipcard-backend
+   
+   # ดู logs ของ Nginx
+   sudo tail -f /var/log/nginx/access.log
+   sudo tail -f /var/log/nginx/error.log
+   ```
+
+3. **การรีสตาร์ทบริการทั้งหมด**
+
+   ```bash
+   # รีสตาร์ทแอปพลิเคชัน
+   pm2 restart all
+   
+   # รีสตาร์ท Nginx
+   sudo systemctl restart nginx
+   ```
+
+### ข้อควรระวังด้านความปลอดภัย
+
+1. **อัปเดตระบบอย่างสม่ำเสมอ**
+
+   ```bash
+   sudo apt update && sudo apt upgrade -y
+   ```
+
+2. **ตรวจสอบการตั้งค่าความปลอดภัย**
+
+   ```bash
+   # ตรวจสอบสถานะไฟร์วอลล์ (สำหรับการตรวจสอบเท่านั้น)
+   sudo ufw status
+   
+   # หมายเหตุ: AWS EC2 ใช้ Security Groups แทน
+   # ไฟร์วอลล์ภายใน นักศึกษาควรจัดการกฎไฟร์วอลล์ผ่าน 
+   # AWS Console Security Groups แทนการใช้ ufw
+   ```
+
+3. **ตรวจสอบและจัดการการเข้าถึง SSH (ทางเลือก)**
+
+   ```bash
+   # แก้ไขการตั้งค่า SSH สำหรับความปลอดภัยที่สูงขึ้น
+   sudo nano /etc/ssh/sshd_config
+   ```
+   
+   พิจารณาปรับเปลี่ยนการตั้งค่าต่อไปนี้:
+   
+   ```
+   PermitRootLogin no
+   PasswordAuthentication no
+   ```
+   
+   รีสตาร์ท SSH หลังจากการเปลี่ยนแปลง:
+   
+   ```bash
+   sudo systemctl restart sshd
+   ```
+
+### ข้อมูลเพิ่มเติมเกี่ยวกับการตั้งค่า EC2 สำหรับ Web hosting
+
+1. **การตั้งค่า Elastic IP (แนะนำ)**
+   
+   การตั้งค่า Elastic IP จะช่วยให้ IP address ของ EC2 instance ไม่เปลี่ยนแปลงเมื่อมีการรีสตาร์ท:
+   
+   - ไปที่ AWS Console > EC2 > Elastic IPs
+   - คลิก "Allocate Elastic IP address"
+   - เลือก Elastic IP address ที่สร้างขึ้น
+   - คลิก "Actions" > "Associate Elastic IP address"
+   - เลือก EC2 instance ของคุณ
+   - คลิก "Associate"
+
+2. **การใช้งาน Elastic Beanstalk (ทางเลือกสำหรับการเรียนรู้เพิ่มเติม)**
+   
+   AWS Elastic Beanstalk เป็นทางเลือกที่ง่ายกว่าสำหรับการ deploy แอปพลิเคชัน โดยไม่ต้องตั้งค่าเซิร์ฟเวอร์เอง
+   สามารถศึกษาเพิ่มเติมได้ที่ [AWS Elastic Beanstalk Documentation](https://docs.aws.amazon.com/elasticbeanstalk/)
 
 ### เคล็ดลับสำหรับนักศึกษา
 
