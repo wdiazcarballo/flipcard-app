@@ -819,327 +819,413 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
 - การสร้างและจัดการคอนเทนเนอร์ด้วย Docker
 - การใช้ Docker Compose ในการรัน Multi-container
 
-**ขั้นตอนการทำ:**
+#### 4.1 การติดตั้ง Docker และ Docker Compose
 
-1. **ติดตั้ง Docker และ Docker Compose**
-   - ดาวน์โหลดและติดตั้ง Docker Desktop จาก [docker.com](https://www.docker.com/products/docker-desktop)
-   - ตรวจสอบการติดตั้ง:
-   ```
-   docker --version
-   docker-compose --version
-   ```
+Docker จะช่วยให้การนำแอปพลิเคชันไปใช้งานง่ายขึ้นโดยการแพ็คแอปพลิเคชันและส่วนต่างๆ ที่จำเป็นไว้ด้วยกัน เริ่มต้นด้วยการติดตั้ง Docker:
 
-2. **สร้าง Dockerfile สำหรับ Backend**
+- **สำหรับ Windows/Mac**: ดาวน์โหลดและติดตั้ง [Docker Desktop](https://www.docker.com/products/docker-desktop)
+- **สำหรับ Ubuntu**:
+  ```bash
+  sudo apt update
+  sudo apt install -y docker.io docker-compose
+  sudo systemctl enable --now docker
+  sudo usermod -aG docker $USER  # เพิ่มผู้ใช้ปัจจุบันเข้ากลุ่ม docker
+  # จากนั้นล็อกเอาท์และล็อกอินอีกครั้งเพื่อให้การเปลี่ยนแปลงมีผล
+  ```
 
-   - สร้างไฟล์ `backend/Dockerfile`:
-   ```dockerfile
-   FROM node:16-alpine
-   
-   WORKDIR /usr/src/app
-   
-   COPY package*.json ./
-   
-   RUN npm install --production
-   
-   COPY . .
-   
-   EXPOSE 5000
-   
-   CMD ["npm", "start"]
-   ```
+ตรวจสอบการติดตั้ง:
+```bash
+docker --version
+docker-compose --version
+```
 
-3. **สร้าง Dockerfile สำหรับ Frontend**
+#### 4.2 การสร้าง Dockerfile
 
-   - สร้างไฟล์ `frontend/Dockerfile`:
-   ```dockerfile
-   # Stage 1: Build React App
-   FROM node:16-alpine as build
-   
-   WORKDIR /usr/src/app
-   
-   COPY package*.json ./
-   
-   RUN npm install
-   
-   COPY . .
-   
-   RUN npm run build
-   
-   # Stage 2: Set up Nginx to serve frontend
-   FROM nginx:alpine
-   
-   COPY --from=build /usr/src/app/build /usr/share/nginx/html
-   COPY nginx.conf /etc/nginx/conf.d/default.conf
-   
-   EXPOSE 80
-   
-   CMD ["nginx", "-g", "daemon off;"]
-   ```
+##### สร้าง Dockerfile สำหรับ Backend
 
-4. **สร้างไฟล์ Nginx Configuration สำหรับ Frontend**
+สร้างไฟล์ `backend/Dockerfile`:
+```dockerfile
+FROM node:16-alpine
 
-   - สร้างไฟล์ `frontend/nginx.conf`:
-   ```
-   server {
-       listen 80;
-       
-       location / {
-           root /usr/share/nginx/html;
-           index index.html;
-           try_files $uri $uri/ /index.html;
-       }
-       
-       location /api {
-           proxy_pass http://backend:5000;
-           proxy_http_version 1.1;
-           proxy_set_header Host $host;
-           proxy_set_header X-Real-IP $remote_addr;
-       }
-   }
-   ```
+WORKDIR /app
 
-5. **สร้างไฟล์ Docker Compose**
+# ติดตั้ง dependencies ก่อน
+COPY package*.json ./
+RUN npm install
 
-   - สร้างไฟล์ `docker-compose.yml` ในโฟลเดอร์หลัก:
-   ```yaml
-   version: '3.8'
-   
-   services:
-     backend:
-       build: ./backend
-       container_name: flipcard-backend
-       restart: always
-       ports:
-         - "5000:5000"
-       environment:
-         - NODE_ENV=production
-         - PORT=5000
-         - MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/flipcard
-         - JWT_SECRET=your_jwt_secret_key
-       networks:
-         - app-network
-   
-     frontend:
-       build: ./frontend
-       container_name: flipcard-frontend
-       restart: always
-       ports:
-         - "80:80"
-       depends_on:
-         - backend
-       networks:
-         - app-network
-   
-   networks:
-     app-network:
-       driver: bridge
-   ```
+# คัดลอกโค้ดทั้งหมด
+COPY . .
 
-6. **สร้างไฟล์ .dockerignore**
+# ตั้งค่าตัวแปรสำหรับ MongoDB และ JWT secret
+ENV MONGO_URI=mongodb://mongo:27017/flipcard
+ENV JWT_SECRET=your_default_jwt_secret
+ENV PORT=5000
+ENV NODE_ENV=production
 
-   - สร้างไฟล์ `.dockerignore` ในโฟลเดอร์ backend และ frontend:
-   ```
-   node_modules
-   npm-debug.log
-   .git
-   .env
-   .env.local
-   .env.development.local
-   .env.test.local
-   .env.production.local
-   ```
+EXPOSE 5000
 
-7. **สร้างและรันคอนเทนเนอร์**
+CMD ["npm", "start"]
+```
 
+##### สร้าง Dockerfile สำหรับ Frontend
+
+สร้างไฟล์ `frontend/Dockerfile`:
+```dockerfile
+# Stage 1: Build React App
+FROM node:16-alpine as build
+
+WORKDIR /app
+
+# ติดตั้ง dependencies ก่อน
+COPY package*.json ./
+RUN npm install
+
+# คัดลอกโค้ดทั้งหมด
+COPY . .
+
+# สร้าง production build
+RUN npm run build
+
+# Stage 2: ใช้ Nginx เพื่อ serve frontend
+FROM nginx:alpine
+
+# คัดลอก build จาก stage แรก
+COPY --from=build /app/build /usr/share/nginx/html
+
+# คัดลอกไฟล์ config ของ Nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+##### สร้างไฟล์ Nginx Configuration
+
+สร้างไฟล์ `frontend/nginx.conf`:
+```nginx
+server {
+    listen 80;
+    
+    # ส่วนของ Frontend
+    location / {
+        root /usr/share/nginx/html;
+        index index.html;
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # Proxy ไปยัง Backend API
+    location /api {
+        proxy_pass http://backend:5000;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### 4.3 การสร้างไฟล์ Docker Compose
+
+Docker Compose ช่วยให้เราสามารถรันหลาย container พร้อมกันได้ สร้างไฟล์ `docker-compose.yml` ในโฟลเดอร์หลัก:
+
+```yaml
+version: '3.8'
+
+services:
+  # Database Service
+  mongo:
+    image: mongo:latest
+    container_name: flipcard-mongo
+    restart: always
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+    networks:
+      - flipcard-network
+
+  # Backend Service
+  backend:
+    build: ./backend
+    container_name: flipcard-backend
+    restart: always
+    depends_on:
+      - mongo
+    environment:
+      - NODE_ENV=production
+      - PORT=5000
+      - MONGO_URI=mongodb://mongo:27017/flipcard
+      - JWT_SECRET=your_jwt_secret  # ควรเปลี่ยนค่านี้
+      - CORS_ORIGINS=http://localhost
+    ports:
+      - "5000:5000"
+    networks:
+      - flipcard-network
+
+  # Frontend Service
+  frontend:
+    build: ./frontend
+    container_name: flipcard-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+    networks:
+      - flipcard-network
+
+networks:
+  flipcard-network:
+    driver: bridge
+
+volumes:
+  mongo-data:
+```
+
+#### 4.4 การสร้างไฟล์ .dockerignore
+
+เพื่อลดขนาดของ Docker image และเพิ่มความปลอดภัย สร้างไฟล์ `.dockerignore` ในโฟลเดอร์ backend และ frontend:
+
+```
+node_modules
+npm-debug.log
+.git
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+```
+
+#### 4.5 การรันแอปพลิเคชันด้วย Docker Compose
+
+```bash
+# สร้างและรัน containers ทั้งหมด
+docker-compose up -d --build
+
+# ดูสถานะของ containers
+docker-compose ps
+
+# ดูล็อกของ containers
+docker-compose logs -f
+
+# ดูล็อกเฉพาะ service
+docker-compose logs -f backend
+
+# หยุด containers
+docker-compose down
+
+# หยุด containers และลบ volumes
+docker-compose down -v
+```
+
+#### 4.6 การรัน Docker บน EC2
+
+หากต้องการรัน Docker บน EC2 ให้ทำตามขั้นตอนเพิ่มเติมนี้:
+
+1. **ตั้งค่า Security Group ให้เปิดพอร์ตที่จำเป็น**:
+   - 22 (SSH)
+   - 80 (HTTP)
+   - 443 (HTTPS)
+   - 27017 (MongoDB - ถ้าจำเป็นต้องเข้าถึงจากภายนอก - แนะนำให้ไม่เปิดในโปรดักชัน)
+
+2. **ติดตั้ง Docker และ Docker Compose**:
    ```bash
-   # สร้างและรันคอนเทนเนอร์ในโหมด detached
+   sudo apt update
+   sudo apt install -y docker.io docker-compose
+   sudo systemctl enable --now docker
+   sudo usermod -aG docker ubuntu
+   # ล็อกเอาท์และล็อกอินใหม่
+   ```
+
+3. **ปรับไฟล์ docker-compose.yml สำหรับ EC2**:
+   - เปลี่ยน CORS_ORIGINS เป็น Public IP ของ EC2
+   - ตั้งค่าด้านความปลอดภัยสำหรับ MongoDB (เช่น เพิ่ม username และ password)
+
+4. **สร้างและรันแอปพลิเคชัน**:
+   ```bash
    docker-compose up -d --build
-   
-   # ดูสถานะของคอนเทนเนอร์
-   docker-compose ps
-   
-   # ดูล็อกของคอนเทนเนอร์
-   docker-compose logs -f
    ```
 
-8. **เข้าถึงแอปพลิเคชัน**
-   - เปิดเบราว์เซอร์และเข้า `http://localhost`
-
-9. **หยุดคอนเทนเนอร์**
-   ```bash
-   docker-compose down
-   ```
-
-### 5. การตั้งค่า CI/CD
+### 5. การตั้งค่า CI/CD 
 
 **สิ่งที่นักศึกษาจะได้เรียนรู้:**
-- กระบวนการ Continuous Integration/Continuous Deployment
-- การใช้ GitHub Actions หรือ GitLab CI/CD
-- การนำขึ้นใช้งานอัตโนมัติ
+- กระบวนการ Continuous Integration (การทดสอบอัตโนมัติ)
+- กระบวนการ Continuous Deployment (การนำขึ้นใช้งานอัตโนมัติ)
+- การใช้ GitHub Actions เพื่อทดสอบและนำขึ้นใช้งานอัตโนมัติ
 
-**ขั้นตอนการทำ:**
+CI/CD (Continuous Integration/Continuous Deployment) ช่วยให้การพัฒนาและการนำขึ้นใช้งานเป็นไปอย่างรวดเร็วและมีประสิทธิภาพ
 
-1. **สร้างไฟล์ GitHub Actions**
+#### 5.1 การตั้งค่า GitHub Actions
 
-   - สร้างโฟลเดอร์ `.github/workflows` ในโฟลเดอร์หลัก
-   - สร้างไฟล์ `.github/workflows/ci-cd.yml`:
-   ```yaml
-   name: CI/CD Pipeline
-   
-   on:
-     push:
-       branches: [ main ]
-     pull_request:
-       branches: [ main ]
-   
-   jobs:
-     test:
-       name: Test
-       runs-on: ubuntu-latest
-       
-       steps:
-       - uses: actions/checkout@v2
-       
-       - name: Setup Node.js
-         uses: actions/setup-node@v2
-         with:
-           node-version: '16'
-       
-       - name: Install Backend Dependencies
-         run: |
-           cd backend
-           npm install
-       
-       - name: Run Backend Tests
-         run: |
-           cd backend
-           npm test
-       
-       - name: Install Frontend Dependencies
-         run: |
-           cd frontend
-           npm install
-       
-       - name: Run Frontend Tests
-         run: |
-           cd frontend
-           npm test -- --watchAll=false
-   
-     build-and-deploy:
-       name: Build and Deploy
-       runs-on: ubuntu-latest
-       needs: test
-       if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-       
-       steps:
-       - uses: actions/checkout@v2
-       
-       - name: Set up Docker Buildx
-         uses: docker/setup-buildx-action@v1
-       
-       - name: Login to DockerHub
-         uses: docker/login-action@v1
-         with:
-           username: ${{ secrets.DOCKERHUB_USERNAME }}
-           password: ${{ secrets.DOCKERHUB_TOKEN }}
-       
-       - name: Build and Push Backend
-         uses: docker/build-push-action@v2
-         with:
-           context: ./backend
-           push: true
-           tags: yourusername/flipcard-backend:latest
-       
-       - name: Build and Push Frontend
-         uses: docker/build-push-action@v2
-         with:
-           context: ./frontend
-           push: true
-           tags: yourusername/flipcard-frontend:latest
-       
-       - name: Deploy to EC2
-         uses: appleboy/ssh-action@master
-         with:
-           host: ${{ secrets.EC2_HOST }}
-           username: ${{ secrets.EC2_USERNAME }}
-           key: ${{ secrets.EC2_PRIVATE_KEY }}
-           script: |
-             cd ~/flipcard-app
-             git pull
-             docker-compose pull
-             docker-compose up -d
-   ```
+GitHub Actions เป็นเครื่องมือ CI/CD ที่ทำงานบน GitHub โดยตรง ช่วยให้คุณทดสอบและนำขึ้นใช้งานแอปพลิเคชันโดยอัตโนมัติ:
 
-2. **ตั้งค่า Secrets ใน GitHub**
-
-   - ไปที่ GitHub repository > Settings > Secrets > New repository secret
-   - เพิ่ม secrets ต่อไปนี้:
-     - `DOCKERHUB_USERNAME`: ชื่อผู้ใช้ Docker Hub
-     - `DOCKERHUB_TOKEN`: token สำหรับเข้าถึง Docker Hub
-     - `EC2_HOST`: IP ของ EC2 instance
-     - `EC2_USERNAME`: ชื่อผู้ใช้สำหรับเข้าถึง EC2 (เช่น ubuntu)
-     - `EC2_PRIVATE_KEY`: คีย์ส่วนตัว SSH สำหรับเข้าถึง EC2
-
-3. **ตั้งค่า EC2 Instance**
-
-   - ติดตั้ง Docker และ Docker Compose:
+1. **สร้างโฟลเดอร์และไฟล์ Configuration**:
    ```bash
-   sudo apt-get update
-   sudo apt-get install -y docker.io
-   sudo systemctl enable docker
-   sudo systemctl start docker
-   sudo usermod -aG docker $USER
-   
-   # ติดตั้ง Docker Compose
-   sudo curl -L "https://github.com/docker/compose/releases/download/1.29.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-   sudo chmod +x /usr/local/bin/docker-compose
+   mkdir -p .github/workflows
+   touch .github/workflows/ci-cd.yml
    ```
 
-   - โคลนโปรเจค:
-   ```bash
-   git clone https://github.com/yourusername/flipcard-app.git
-   cd flipcard-app
-   ```
+2. **ตั้งค่าไฟล์ CI/CD**:
+   เปิดไฟล์ `.github/workflows/ci-cd.yml` และเพิ่มข้อมูลต่อไปนี้:
 
-   - สร้างไฟล์ docker-compose.yml สำหรับ Production:
-   ```yaml
-   version: '3.8'
-   
-   services:
-     backend:
-       image: yourusername/flipcard-backend:latest
-       container_name: flipcard-backend
-       restart: always
-       environment:
-         - NODE_ENV=production
-         - PORT=5000
-         - MONGO_URI=${MONGO_URI}
-         - JWT_SECRET=${JWT_SECRET}
-       networks:
-         - app-network
-   
-     frontend:
-       image: yourusername/flipcard-frontend:latest
-       container_name: flipcard-frontend
-       restart: always
-       ports:
-         - "80:80"
-       depends_on:
-         - backend
-       networks:
-         - app-network
-   
-   networks:
-     app-network:
-       driver: bridge
-   ```
+```yaml
+name: CI/CD Pipeline
 
-4. **ทดสอบกระบวนการ CI/CD**
+on:
+  push:
+    branches: [ main ] # หรือ master ตามชื่อ branch หลักของคุณ
+  pull_request:
+    branches: [ main ]
 
-   - สร้างการเปลี่ยนแปลงในโค้ด
-   - Commit และ Push การเปลี่ยนแปลงไปยัง main branch
-   - ตรวจสอบการทำงานของ GitHub Actions ที่ Actions tab
-   - ตรวจสอบว่าแอปพลิเคชันถูกปรับปรุงบน EC2 instance
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '16'
+        cache: 'npm'
+    
+    - name: Test Backend
+      working-directory: ./backend
+      run: |
+        npm ci
+        npm test
+    
+    - name: Test Frontend
+      working-directory: ./frontend
+      run: |
+        npm ci
+        npm run test:ci
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to EC2
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd ~/flipcard-app
+          git pull
+          cd backend && npm ci
+          cd ../frontend && npm ci && npm run build
+          
+          # Restart services
+          cd ~/flipcard-app
+          pm2 restart flipcard-backend
+          sudo systemctl restart nginx
+```
+
+#### 5.2 การตั้งค่า Secrets ใน GitHub
+
+สำหรับ CI/CD คุณต้องเพิ่ม Secrets ใน GitHub repository ของคุณ:
+
+1. ไปที่ GitHub repository > Settings > Secrets > Actions > New repository secret
+2. เพิ่ม secrets ต่อไปนี้:
+   - `EC2_HOST`: IP address ของ EC2 instance เช่น `123.45.67.89`
+   - `EC2_USER`: ชื่อผู้ใช้สำหรับเข้าถึง EC2 (โดยปกติคือ `ubuntu`)
+   - `EC2_SSH_KEY`: คีย์ส่วนตัว SSH (Private key) สำหรับเข้าถึง EC2
+
+#### 5.3 การใช้ Docker ใน CI/CD Pipeline
+
+หากคุณต้องการใช้ Docker ใน CI/CD pipeline สามารถเพิ่มขั้นตอนการสร้างและนำขึ้นใช้งาน Docker ดังนี้:
+
+```yaml
+name: Docker CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Login to DockerHub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Build and Push Backend
+      uses: docker/build-push-action@v4
+      with:
+        context: ./backend
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: yourusername/flipcard-backend:latest
+    
+    - name: Build and Push Frontend
+      uses: docker/build-push-action@v4
+      with:
+        context: ./frontend
+        push: ${{ github.event_name != 'pull_request' }}
+        tags: yourusername/flipcard-frontend:latest
+    
+    - name: Deploy to EC2
+      if: github.event_name != 'pull_request'
+      uses: appleboy/ssh-action@v0.1.10
+      with:
+        host: ${{ secrets.EC2_HOST }}
+        username: ${{ secrets.EC2_USER }}
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          cd ~/flipcard-app
+          docker-compose pull
+          docker-compose up -d
+```
+
+ในกรณีนี้ คุณจะต้องเพิ่ม secrets เพิ่มเติม:
+- `DOCKERHUB_USERNAME`: ชื่อผู้ใช้ Docker Hub
+- `DOCKERHUB_TOKEN`: Token สำหรับการยืนยันตัวตนกับ Docker Hub (สร้างได้จาก Docker Hub Account Settings > Security)
+
+#### 5.4 ข้อแนะนำสำหรับการนำไปใช้งานจริง
+
+1. **แยกการตั้งค่าสำหรับแต่ละสภาพแวดล้อม**
+   - สร้างไฟล์ `.env.development`, `.env.production`, `.env.test` แยกกัน
+   - ใช้ branch ที่แตกต่างกันสำหรับการพัฒนาและการนำขึ้นใช้งาน
+
+2. **การทดสอบอัตโนมัติ**
+   - เขียนการทดสอบให้ครอบคลุมฟังก์ชันหลักของแอปพลิเคชัน
+   - ตั้งค่า threshold ความครอบคลุมของการทดสอบ
+
+3. **ความปลอดภัย**
+   - ไม่เก็บข้อมูลที่ละเอียดอ่อน (เช่น คีย์ API, รหัสผ่าน) ใน repository
+   - ใช้ secrets และตัวแปรสภาพแวดล้อมสำหรับข้อมูลที่ละเอียดอ่อน
+
+4. **การจัดการข้อผิดพลาด**
+   - เพิ่มการแจ้งเตือนเมื่อ pipeline ล้มเหลว (เช่น Slack, Email)
+   - บันทึกข้อผิดพลาดและตรวจสอบอย่างสม่ำเสมอ
+
+#### 5.5 ทางเลือกอื่นสำหรับ CI/CD
+
+นอกจาก GitHub Actions แล้ว ยังมีเครื่องมือ CI/CD อื่นๆ ที่นิยมใช้:
+
+- **GitLab CI/CD**: หากคุณใช้ GitLab สำหรับการจัดการซอร์สโค้ด
+- **Jenkins**: เซิร์ฟเวอร์ CI/CD แบบ self-hosted ที่มีความยืดหยุ่นสูง
+- **CircleCI**: บริการ CI/CD แบบคลาวด์ที่ใช้งานง่าย
+- **AWS CodePipeline**: หากคุณใช้บริการของ AWS
 
 ### 6. นำขึ้นใช้งานบน AWS EC2 แบบง่าย
 
@@ -1148,6 +1234,7 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
 - การตั้งค่าเซิร์ฟเวอร์บนคลาวด์
 - การนำแอปพลิเคชันขึ้นใช้งานจริง
 - การเชื่อมต่อโดเมนกับเซิร์ฟเวอร์
+- การแก้ไขปัญหาสิทธิ์การเข้าถึงไฟล์ (File Permissions)
 
 **ขั้นตอนการทำ:**
 
@@ -1160,13 +1247,13 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
 
    - เลือก "EC2" จากรายการบริการ
    - คลิก "Launch Instance"
-   - เลือก Ubuntu Server 20.04 LTS 
+   - เลือก Ubuntu Server 20.04 LTS หรือ 22.04 LTS
    - เลือกประเภท t2.micro (ฟรีในปีแรก)
    - ตั้งค่ากลุ่มความปลอดภัย (Security Group) ให้อนุญาตพอร์ตดังนี้:
      - 22 (SSH): สำหรับการเข้าถึง SSH
      - 80 (HTTP): สำหรับการเข้าถึงเว็บไซต์
      - 443 (HTTPS): สำหรับการเข้าถึงเว็บไซต์แบบปลอดภัย
-     - 5000 (Express API): สำหรับการเข้าถึง API โดยตรง (หรือปิดไว้สำหรับการ proxy ผ่าน Nginx)
+     - 5000 (Express API): สำหรับการเข้าถึง API โดยตรง (ทางเลือก)
    - สร้างและดาวน์โหลดคีย์แพร์ (.pem file)
    - คลิก "Launch Instance"
 
@@ -1174,7 +1261,7 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
 
    **สำหรับ Windows**
    - ใช้ Mobaxterm, PuTTY หรือ Windows Terminal เพื่อเชื่อมต่อกับ EC2
-   - หรือใช้ EC2 online console ใน AWS Management Console
+   - หรือใช้ EC2 Instance Connect ในหน้า AWS Management Console
 
    **สำหรับ Mac/Linux**
    ```bash
@@ -1245,7 +1332,7 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
 
    ```bash
    # กลับไปที่โฟลเดอร์หลัก
-   cd ..
+   cd ~/flipcard-app
    
    # เข้าไปในโฟลเดอร์ frontend
    cd frontend
@@ -1265,7 +1352,23 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
    ls -la build
    ```
 
-8. **ตั้งค่า Nginx**
+8. **ตั้งค่า Frontend ในตำแหน่งมาตรฐานสำหรับ Nginx**
+
+   **สำคัญ**: Nginx ทำงานเป็นผู้ใช้ www-data และอาจมีปัญหาในการเข้าถึงไฟล์ในโฟลเดอร์ home ของผู้ใช้ ubuntu วิธีแก้ที่ดีที่สุดคือย้ายไฟล์ frontend ไปยังตำแหน่งมาตรฐานของ Nginx
+
+   ```bash
+   # สร้างโฟลเดอร์สำหรับเว็บไซต์
+   sudo mkdir -p /var/www/flipcard
+   
+   # คัดลอกไฟล์ frontend ไปยังตำแหน่งมาตรฐาน
+   sudo cp -r ~/flipcard-app/frontend/build/* /var/www/flipcard/
+   
+   # ตั้งค่าสิทธิ์การเข้าถึงที่ถูกต้อง
+   sudo chown -R www-data:www-data /var/www/flipcard
+   sudo chmod -R 755 /var/www/flipcard
+   ```
+
+9. **ตั้งค่า Nginx**
 
    ```bash
    # สร้าง Nginx configuration
@@ -1279,9 +1382,9 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
        listen 80;
        server_name your-ec2-ip; # แทนที่ด้วย IP หรือโดเมนจริง
 
-       # ส่วนของ Frontend
+       # ส่วนของ Frontend - ชี้ไปที่ตำแหน่งมาตรฐานแทนโฟลเดอร์ home
        location / {
-           root /home/ubuntu/flipcard-app/frontend/build;
+           root /var/www/flipcard;
            index index.html;
            try_files $uri $uri/ /index.html;
        }
@@ -1311,23 +1414,42 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
    }
    ```
 
-9. **เปิดใช้งาน Nginx Config และตรวจสอบความถูกต้อง**
+10. **เปิดใช้งาน Nginx Config และตรวจสอบความถูกต้อง**
 
-   ```bash
-   # เปิดใช้งาน configuration
-   sudo ln -s /etc/nginx/sites-available/flipcard /etc/nginx/sites-enabled/
-   
-   # ลบการตั้งค่าเริ่มต้น (ทางเลือก)
-   sudo rm /etc/nginx/sites-enabled/default
-   
-   # ตรวจสอบความถูกต้องของการตั้งค่า
-   sudo nginx -t
-   
-   # รีสตาร์ท Nginx
-   sudo systemctl restart nginx
-   ```
+    ```bash
+    # เปิดใช้งาน configuration
+    sudo ln -s /etc/nginx/sites-available/flipcard /etc/nginx/sites-enabled/
+    
+    # ลบการตั้งค่าเริ่มต้น (แนะนำเพื่อหลีกเลี่ยงการชนกันของการตั้งค่า)
+    sudo rm /etc/nginx/sites-enabled/default
+    
+    # ตรวจสอบความถูกต้องของการตั้งค่า
+    sudo nginx -t
+    
+    # รีสตาร์ท Nginx
+    sudo systemctl restart nginx
+    ```
 
-10. **ตรวจสอบสถานะของบริการ**
+11. **การแก้ไขปัญหาสิทธิ์การเข้าถึงไฟล์ (File Permissions)**
+
+    หากคุณยังพบข้อผิดพลาด "Permission denied" ในบันทึก Nginx:
+    
+    ```bash
+    # ตรวจสอบบันทึกข้อผิดพลาดของ Nginx
+    sudo tail -f /var/log/nginx/error.log
+    
+    # กำหนดสิทธิ์การเข้าถึงไฟล์ที่เข้มงวดขึ้น
+    sudo chmod -R 755 /var/www/flipcard
+    sudo chown -R www-data:www-data /var/www/flipcard
+    
+    # ตรวจสอบสิทธิ์การเข้าถึง
+    ls -la /var/www/flipcard
+    
+    # รีสตาร์ท Nginx
+    sudo systemctl restart nginx
+    ```
+
+12. **ตรวจสอบสถานะของบริการ**
 
     ```bash
     # ตรวจสอบสถานะของ PM2
@@ -1340,16 +1462,24 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
     sudo systemctl status nginx
     ```
 
-11. **ทดสอบการเข้าถึงแอปพลิเคชัน**
+13. **ทดสอบการเข้าถึงแอปพลิเคชัน**
     - เปิดเบราว์เซอร์และเข้าไปที่ `http://your-ec2-ip`
     - ทดสอบการลงทะเบียน เข้าสู่ระบบ และฟังก์ชันการทำงานอื่นๆ
 
-12. **การแก้ไขปัญหาเบื้องต้น**
+14. **การแก้ไขปัญหาทั่วไป**
 
     **ถ้าเว็บไซต์ไม่แสดง:**
     - ตรวจสอบว่า Nginx ทำงานอยู่: `sudo systemctl status nginx`
     - ตรวจสอบ Nginx error logs: `sudo cat /var/log/nginx/error.log`
-    - ตรวจสอบว่า Security Group ใน AWS เปิดพอร์ต 80 และ 443
+    - ตรวจสอบว่า Security Group ใน AWS เปิดพอร์ต 80
+
+    **ถ้าพบข้อผิดพลาดเกี่ยวกับสิทธิ์ (Permission denied):**
+    ```bash
+    # แก้ไขปัญหาสิทธิ์สำหรับไฟล์ frontend ใน /var/www
+    sudo find /var/www/flipcard -type d -exec chmod 755 {} \;
+    sudo find /var/www/flipcard -type f -exec chmod 644 {} \;
+    sudo chown -R www-data:www-data /var/www/flipcard
+    ```
     
     **ถ้า API ไม่ทำงาน:**
     - ตรวจสอบว่า backend ทำงานอยู่: `pm2 status`
@@ -1357,7 +1487,7 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
     - ตรวจสอบการเชื่อมต่อกับ MongoDB
     - ตรวจสอบ CORS settings ใน backend/server.js
 
-13. **การตั้งค่า HTTPS (ทางเลือก)**
+15. **การตั้งค่า HTTPS (ทางเลือก)**
 
     หากคุณมีโดเมนและต้องการใช้งาน HTTPS:
     
@@ -1371,9 +1501,9 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
     # ทำตามขั้นตอนที่ปรากฏบนหน้าจอ
     ```
 
-14. **การใช้สคริปต์ติดตั้งอัตโนมัติ**
+16. **การใช้สคริปต์ติดตั้งอัตโนมัติ**
 
-    โปรเจคนี้มีสคริปต์ `setup-ec2.sh` ที่สามารถช่วยให้การติดตั้งทั้งหมดเป็นไปโดยอัตโนมัติ:
+    โปรเจคนี้มีสคริปต์ `setup-ec2.sh` ที่สามารถช่วยให้การติดตั้งทั้งหมดเป็นไปโดยอัตโนมัติ รวมถึงการแก้ไขปัญหาสิทธิ์การเข้าถึงไฟล์:
     
     ```bash
     # อัปโหลดสคริปต์ไปยัง EC2 (จาก terminal เครื่องคุณ)
@@ -1392,10 +1522,10 @@ Frontend ใช้ React Testing Library และ Jest สำหรับกา
     สคริปต์นี้จะทำการติดตั้งทุกอย่างให้อัตโนมัติ รวมถึง:
     - ติดตั้งซอฟต์แวร์ที่จำเป็นทั้งหมด
     - ตั้งค่า Backend และ Frontend
-    - ตั้งค่า Nginx
+    - ตั้งค่า Nginx ที่ถูกต้องพร้อมกับสิทธิ์การเข้าถึงที่เหมาะสม
     - ตั้งค่า PM2 สำหรับการรันแอปอัตโนมัติเมื่อรีบูต
     
-15. **ตั้งค่าการสำรองข้อมูลอัตโนมัติ (ทางเลือก)**
+17. **ตั้งค่าการสำรองข้อมูลอัตโนมัติ (ทางเลือก)**
 
     ```bash
     # สร้างสคริปท์สำรองข้อมูล MongoDB

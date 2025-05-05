@@ -86,16 +86,23 @@ echo "REACT_APP_API_URL=http://$PUBLIC_IP" > .env.production
 echo "กำลังสร้าง Production Build..."
 npm run build
 
+# ตั้งค่า Frontend ในตำแหน่งมาตรฐานสำหรับ Nginx
+echo "9. กำลังย้ายไฟล์ frontend ไปยังตำแหน่งมาตรฐานของ Nginx..."
+sudo mkdir -p /var/www/flipcard
+sudo cp -r ~/flipcard-app/frontend/build/* /var/www/flipcard/
+sudo chown -R www-data:www-data /var/www/flipcard
+sudo chmod -R 755 /var/www/flipcard
+
 # ตั้งค่า Nginx
-echo "9. กำลังตั้งค่า Nginx..."
+echo "10. กำลังตั้งค่า Nginx..."
 sudo tee /etc/nginx/sites-available/flipcard > /dev/null << EOF
 server {
     listen 80;
     server_name $PUBLIC_IP;
 
-    # ส่วนของ Frontend
+    # ส่วนของ Frontend - ชี้ไปที่ตำแหน่งมาตรฐานที่ Nginx มีสิทธิ์เข้าถึง
     location / {
-        root /home/ubuntu/flipcard-app/frontend/build;
+        root /var/www/flipcard;
         index index.html;
         try_files \$uri \$uri/ /index.html;
     }
