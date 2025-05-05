@@ -67,3 +67,6 @@ process.on('unhandledRejection', (err, promise) => {
   // ปิดเซิร์ฟเวอร์และออกจากกระบวนการ
   // server.close(() => process.exit(1));
 });
+
+module.exports = app; // ส่งออก app สำหรับการทดสอบ
+// module.exports = app; // ส่งออก app สำหรับการทดสอบ

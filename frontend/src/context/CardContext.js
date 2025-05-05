@@ -114,17 +114,51 @@ export const CardProvider = ({ children }) => {
   // ฟังก์ชันสำหรับการสร้างการ์ดใหม่
   const createCard = useCallback(async (categoryId, cardData) => {
     setLoading(true);
+    console.log('Creating card with data:', cardData); // Debug log
+    
     try {
+      // Ensure that front is a non-empty string
+      if (!cardData.front || typeof cardData.front !== 'string' || cardData.front.trim() === '') {
+        console.error('Front data is invalid:', cardData.front);
+        throw new Error('กรุณาระบุข้อความด้านหน้าการ์ด');
+      }
+      
+      // Ensure back is a non-empty array
+      if (!Array.isArray(cardData.back) || cardData.back.length === 0) {
+        console.error('Back data is invalid:', cardData.back);
+        throw new Error('กรุณาระบุข้อความด้านหลังการ์ด');
+      }
+      
+      // Prepare the data exactly as the API expects it
+      const preparedData = {
+        front: cardData.front.trim(),
+        back: cardData.back.map(item => item.toString().trim()).filter(item => item !== '')
+      };
+      
+      console.log('Sending to API:', preparedData);
+      
+      // Make direct API request with explicit content type
       const response = await API.post(
         `/categories/${categoryId}/cards`,
-        cardData
+        preparedData,
+        {
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
+      
+      console.log('Card created successfully:', response.data);
       setCards([...cards, response.data.data]);
       setError(null);
       return response.data.data;
     } catch (error) {
+      console.error('Error creating card:', error);
+      if (error.response) {
+        console.error('Server response:', error.response.data);
+      }
       setError(
-        error.response?.data?.message || 'เกิดข้อผิดพลาดในการสร้างการ์ด'
+        error.response?.data?.message || error.message || 'เกิดข้อผิดพลาดในการสร้างการ์ด'
       );
       return null;
     } finally {
